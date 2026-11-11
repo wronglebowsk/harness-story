@@ -1,0 +1,41 @@
+# Python bytecode & packaging (Catalog Rule 17: no committed .pyc/.pyo)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Test & coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Node / Desktop test artifacts
+node_modules/
+npm-debug.log*
+
+# Local generated story output
+out/
+catalog-entry/
+
+# Editor / OS files
+.DS_Store
+*.swp
+*~

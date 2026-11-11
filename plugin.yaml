@@ -1,0 +1,49 @@
+name: harness-story
+version: 0.1.0
+description: "Tell the full, animated story of what the model and harness did: causal decisions, hypotheses, failures & pivots, step-by-step context window progression, tool call tallies, code impact trails, subagent orchestration, and hybrid LLM narratives."
+author: Paul Spencer
+kind: backend
+requires_hermes: ">=0.20"
+python_runtime: external
+provides_tools:
+  - harness_story_generate
+  - harness_story_inspect
+  - harness_story_compare
+  - harness_story_render
+  - harness_story_list
+provides_hooks:
+  - on_session_start
+  - pre_llm_call
+  - pre_api_request
+  - post_api_request
+  - pre_tool_call
+  - post_tool_call
+  - on_skill_lifecycle
+  - subagent_start
+  - subagent_stop
+  - post_compaction
+  - post_llm_call
+  - on_session_end
+capabilities:
+  - filesystem:write
+config_schema:
+  model:
+    type: str
+    label: Narrative Model
+    default: qwen3.8-flash-next-iq3_xxs
+    description: "OpenAI-compatible model name for narrative synthesis (local model recommended; falls back to deterministic synthesis when offline)."
+  base_url:
+    type: str
+    label: Model Base URL
+    default: "http://192.168.1.12:8080"
+    description: "OpenAI-compatible endpoint URL, without /v1."
+  context_window:
+    type: int
+    label: Default Context Window
+    default: 131072
+    description: "Fallback context window token limit when the provider does not report context_max."
+  auto_generate_on_session_end:
+    type: bool
+    label: Auto-generate Story on Session End
+    default: true
+    description: "Automatically write a session story JSON and animated HTML viewer when a session ends."
