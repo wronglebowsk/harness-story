@@ -144,7 +144,7 @@ def generate(body: Dict[str, Any]) -> Dict[str, Any]:
     use_llm = bool(body.get("use_llm", True))
     settings = _plugin_settings()
     model = str(body.get("model") or settings.get("model", "qwen3.8-flash-next-iq3_xxs"))
-    base_url = str(body.get("base_url") or settings.get("base_url", "http://192.168.1.12:8080"))
+    base_url = str(body.get("base_url") or settings.get("base_url", "")).strip()
     context_window = int(body.get("context_window") or settings.get("context_window", 131072))
     db_path = body.get("db_path")
 

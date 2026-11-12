@@ -153,7 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_gen.add_argument("--out-dir", default=None)
     p_gen.add_argument("--context-window", type=int, default=131072)
     p_gen.add_argument("--no-llm", action="store_true", help="Skip LLM narrative pass and use deterministic synthesis")
-    p_gen.add_argument("--base-url", default="http://192.168.1.12:8080")
+    p_gen.add_argument("--base-url", default="", help="Optional OpenAI-compatible endpoint URL for LLM narrative pass")
     p_gen.add_argument("--model", default="qwen3.8-flash-next-iq3_xxs")
     p_gen.set_defaults(func=cmd_generate)
 

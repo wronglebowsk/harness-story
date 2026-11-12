@@ -31,11 +31,8 @@ def get_storage_dir(custom_dir: Optional[str] = None) -> Path:
             from plugins.plugin_storage import plugin_data_dir
             root = plugin_data_dir(PLUGIN_ID)
         except Exception:
-            try:
-                from hermes_constants import get_hermes_home
-                root = get_hermes_home() / "plugin-data" / PLUGIN_ID
-            except Exception:
-                root = Path.home() / ".hermes" / "plugin-data" / PLUGIN_ID
+            from hermes_constants import get_hermes_home
+            root = get_hermes_home() / "plugin-data" / PLUGIN_ID
     for sub in ("live", "stories", "out"):
         (root / sub).mkdir(parents=True, exist_ok=True)
     return root

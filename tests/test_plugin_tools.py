@@ -42,12 +42,15 @@ def _load_plugin_module() -> Any:
 
 class StubPluginContext:
     def __init__(self, config: Dict[str, Any]) -> None:
-        self.config = config
+        self._settings = dict(config)
         self.plugin_dir = str(PLUGIN_ROOT)
         self.tools: Dict[str, Dict[str, Any]] = {}
         self.hooks: Dict[str, List[Callable[..., Any]]] = {}
         self.commands: Dict[str, Dict[str, Any]] = {}
         self.skills: Dict[str, str] = {}
+
+    def get_config(self, key: str, default: Any = None) -> Any:
+        return self._settings.get(key, default)
 
     def register_tool(self, name: str, toolset: str, schema: Dict[str, Any], handler: Callable[..., str], **_: Any) -> None:
         self.tools[name] = {"toolset": toolset, "schema": schema, "handler": handler}
@@ -65,15 +68,21 @@ class StubPluginContext:
 def test_register_matches_manifest_and_invokes_all_tools(tmp_path: Path) -> None:
     db_file = _create_synthetic_db(tmp_path)
     manifest = _load_manifest()
+    storage_root = tmp_path / "data"
 
     ctx = StubPluginContext({
         "db_path": str(db_file),
-        "storage_dir": str(tmp_path / "data"),
+        "storage_dir": str(storage_root),
         "context_window": 131072,
         "auto_generate_on_session_end": True,
     })
     mod = _load_plugin_module()
     mod.register(ctx)
+
+    # Verify default base_url is empty and ctx.get_config works
+    resolved_cfg = mod._resolve_config(ctx)
+    assert resolved_cfg["base_url"] == ""
+    assert resolved_cfg["context_window"] == 131072
 
     # 1. Exact match with plugin.yaml provides_tools and provides_hooks
     assert set(ctx.tools.keys()) == set(manifest["provides_tools"])
@@ -117,16 +126,30 @@ def test_register_matches_manifest_and_invokes_all_tools(tmp_path: Path) -> None
     insp_missing = json.loads(ctx.tools["harness_story_inspect"]["handler"]({"story": "parent_story", "step": 99}))
     assert insp_missing["ok"] is False
 
-    # 5. Test harness_story_render
-    custom_html = tmp_path / "custom_viewer.html"
+    # Reject arbitrary file paths outside storage_dir/{stories,out}
+    outside_json = tmp_path / "outside.json"
+    outside_json.write_text(Path(gen_res["story_json"]).read_text(encoding="utf-8"), encoding="utf-8")
+    insp_outside = json.loads(ctx.tools["harness_story_inspect"]["handler"]({"story": str(outside_json)}))
+    assert insp_outside["ok"] is False
+
+    # 5. Test harness_story_render (confined to <storage>/out/)
     ren_res = json.loads(ctx.tools["harness_story_render"]["handler"]({
         "story": "parent_story",
-        "output_html": str(custom_html),
+        "output_html": "custom_viewer.html",
         "title": "Custom Title",
     }))
     assert ren_res["ok"] is True
+    custom_html = storage_root / "out" / "custom_viewer.html"
     assert custom_html.is_file()
     assert "Custom Title" in custom_html.read_text(encoding="utf-8")
+
+    # Reject output_html escaping <storage>/out/
+    escape_res = json.loads(ctx.tools["harness_story_render"]["handler"]({
+        "story": "parent_story",
+        "output_html": str(tmp_path / "escaped.html"),
+    }))
+    assert escape_res["ok"] is False
+    assert not (tmp_path / "escaped.html").exists()
 
     # 6. Test harness_story_compare
     cmp_res = json.loads(ctx.tools["harness_story_compare"]["handler"]({

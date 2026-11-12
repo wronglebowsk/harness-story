@@ -9,8 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TESTS_DIR = Path(__file__).resolve().parent
 
-for p in (str(TESTS_DIR), str(ROOT)):
-    if p not in sys.path:
+for p in (str(TESTS_DIR), str(ROOT), str(Path.home() / ".hermes" / "hermes-agent")):
+    if Path(p).is_dir() and p not in sys.path:
         sys.path.insert(0, p)
 
 # If running under Hermes Agent's isolated (-I) test interpreter, attach the active Hermes venv site-packages.

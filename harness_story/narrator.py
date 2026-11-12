@@ -19,9 +19,9 @@ from .models import clip_text
 class LocalOpenAI:
     """Zero-dependency OpenAI-compatible chat completion client (stdlib urllib only)."""
 
-    def __init__(self, base_url: str = "http://192.168.1.12:8080", model: str = "qwen3.8-flash-next-iq3_xxs",
+    def __init__(self, base_url: str = "", model: str = "qwen3.8-flash-next-iq3_xxs",
                  api_key: str = "local", timeout: float = 25.0) -> None:
-        clean = (base_url or "http://192.168.1.12:8080").rstrip("/")
+        clean = (base_url or "").strip().rstrip("/")
         if clean.endswith("/v1"):
             clean = clean[:-3]
         self.base_url = clean
@@ -30,6 +30,8 @@ class LocalOpenAI:
         self.timeout = timeout
 
     def chat_json(self, system_prompt: str, user_prompt: str, max_tokens: int = 900) -> Optional[Dict[str, Any]]:
+        if not self.base_url:
+            return None
         url = f"{self.base_url}/v1/chat/completions"
         payload = {
             "model": self.model,
@@ -158,14 +160,14 @@ def synthesize_narrative(
     story: Dict[str, Any],
     *,
     use_llm: bool = True,
-    base_url: str = "http://192.168.1.12:8080",
+    base_url: str = "",
     model: str = "qwen3.8-flash-next-iq3_xxs",
     llm_client: Optional[Any] = None,
     timeout: float = 20.0,
 ) -> Dict[str, Any]:
     """Enrich *story* in-place with deterministic insights and optional LLM-synthesized narrative."""
     story["harness_insights"] = build_deterministic_insights(story)
-    if not use_llm:
+    if not use_llm or (llm_client is None and not (base_url or "").strip()):
         return story
 
     # Build a compact, high-signal digest for the LLM narrator

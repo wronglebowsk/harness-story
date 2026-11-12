@@ -44,51 +44,58 @@ def ensure_package(ctx: Any = None) -> None:
 
 
 def _resolve_config(ctx: Any = None) -> Dict[str, Any]:
-    """Read plugin config values from ctx, env vars, or defaults."""
-    cfg: Dict[str, Any] = {}
-    if ctx is not None:
-        raw = getattr(ctx, "config", None) or getattr(ctx, "plugin_config", None)
-        if isinstance(raw, dict):
-            cfg.update(raw)
+    """Read plugin config values via ctx.get_config(...) with env var overrides and defaults."""
+    def _from_ctx(key: str, default: Any = None) -> Any:
+        if ctx is not None and callable(getattr(ctx, "get_config", None)):
+            try:
+                val = ctx.get_config(key, default)
+                if val is not None:
+                    return val
+            except Exception:
+                pass
+        return default
+
+    model = os.environ.get("HARNESS_STORY_MODEL") or _from_ctx("model", "qwen3.8-flash-next-iq3_xxs")
+    base_url = os.environ.get("HARNESS_STORY_BASE_URL")
+    if base_url is None:
+        base_url = _from_ctx("base_url", "")
+    cw_raw = os.environ.get("HARNESS_STORY_CONTEXT_WINDOW")
+    if cw_raw is None:
+        cw_raw = _from_ctx("context_window", 131072)
+    auto_gen = _from_ctx("auto_generate_on_session_end", True)
+    storage_dir = os.environ.get("HARNESS_STORY_STORAGE_DIR") or _from_ctx("storage_dir", None)
+    db_path = os.environ.get("HARNESS_STORY_DB_PATH") or _from_ctx("db_path", None)
+
     return {
-        "model": os.environ.get(
-            "HARNESS_STORY_MODEL",
-            cfg.get("model", "qwen3.8-flash-next-iq3_xxs"),
-        ),
-        "base_url": os.environ.get(
-            "HARNESS_STORY_BASE_URL",
-            cfg.get("base_url", "http://192.168.1.12:8080"),
-        ),
-        "context_window": int(
-            os.environ.get(
-                "HARNESS_STORY_CONTEXT_WINDOW",
-                cfg.get("context_window", 131072),
-            )
-        ),
-        "auto_generate_on_session_end": bool(
-            cfg.get("auto_generate_on_session_end", True)
-        ),
-        "storage_dir": os.environ.get("HARNESS_STORY_STORAGE_DIR", cfg.get("storage_dir")),
-        "db_path": os.environ.get("HARNESS_STORY_DB_PATH", cfg.get("db_path")),
+        "model": str(model or "qwen3.8-flash-next-iq3_xxs"),
+        "base_url": str(base_url or "").strip(),
+        "context_window": int(cw_raw or 131072),
+        "auto_generate_on_session_end": bool(auto_gen),
+        "storage_dir": storage_dir,
+        "db_path": db_path,
     }
 
 
 def _resolve_story_path(ref: str, storage_dir: Optional[str] = None) -> Path:
-    """Resolve a story reference (file path, slug, or session_id) to a JSON file on disk."""
+    """Resolve a story reference (slug or session_id) strictly inside <storage_dir>/{stories,out}."""
     from harness_story.collector import get_storage_dir
 
-    candidate = Path(ref).expanduser()
-    if candidate.is_file():
-        return candidate
+    root = get_storage_dir(storage_dir).resolve()
+    raw = (ref or "").strip()
+    if not raw or "/" in raw or "\\" in raw or ".." in raw:
+        raise FileNotFoundError(f"Story '{ref}' must be a story slug inside {root / 'stories'}")
 
-    root = get_storage_dir(storage_dir)
-    clean = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in (ref or "").strip())
+    clean = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in raw)
+    if not clean or clean in (".", ".."):
+        raise FileNotFoundError(f"Story '{ref}' not found in {root / 'stories'}")
+
+    stem = clean[:-5] if clean.endswith(".json") else clean
     for sub in ("stories", "out"):
-        for name in (f"{clean}.json", clean):
-            p = root / sub / name
-            if p.is_file():
-                return p
-    raise FileNotFoundError(f"Story '{ref}' not found on disk or in {root / 'stories'}")
+        sub_dir = (root / sub).resolve()
+        candidate = (sub_dir / f"{stem}.json").resolve()
+        if candidate.is_relative_to(sub_dir) and candidate.is_file():
+            return candidate
+    raise FileNotFoundError(f"Story '{ref}' not found in {root / 'stories'}")
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +145,7 @@ INSPECT_SCHEMA: Dict[str, Any] = {
         "properties": {
             "story": {
                 "type": "string",
-                "description": "Story slug, session_id, or path to a story .json file.",
+                "description": "Story slug or session_id in the plugin storage directory.",
             },
             "step": {
                 "type": "integer",
@@ -165,11 +172,11 @@ COMPARE_SCHEMA: Dict[str, Any] = {
         "properties": {
             "story_a": {
                 "type": "string",
-                "description": "Baseline story slug, session_id, or path to .json.",
+                "description": "Baseline story slug or session_id in the plugin storage directory.",
             },
             "story_b": {
                 "type": "string",
-                "description": "Comparison story slug, session_id, or path to .json.",
+                "description": "Comparison story slug or session_id in the plugin storage directory.",
             },
         },
         "required": ["story_a", "story_b"],
@@ -180,18 +187,18 @@ RENDER_SCHEMA: Dict[str, Any] = {
     "name": "harness_story_render",
     "description": (
         "Render or re-render a self-contained animated HTML5 story viewer from an existing story "
-        "slug or JSON path, returning the saved HTML file path and summary telemetry."
+        "slug in the plugin storage directory, writing the HTML inside <storage>/out/."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "story": {
                 "type": "string",
-                "description": "Story slug, session_id, or path to story .json.",
+                "description": "Story slug or session_id in the plugin storage directory.",
             },
             "output_html": {
                 "type": "string",
-                "description": "Optional custom destination path for the rendered HTML file.",
+                "description": "Optional filename or relative path inside <storage>/out/ for the rendered HTML file.",
             },
             "title": {
                 "type": "string",
@@ -382,6 +389,7 @@ def _handle_compare(args: Dict[str, Any], ctx: Any = None, **_: Any) -> str:
 def _handle_render(args: Dict[str, Any], ctx: Any = None, **_: Any) -> str:
     try:
         ensure_package(ctx)
+        from harness_story.collector import get_storage_dir
         from harness_story.render import render_story_html
 
         cfg = _resolve_config(ctx)
@@ -392,8 +400,23 @@ def _handle_render(args: Dict[str, Any], ctx: Any = None, **_: Any) -> str:
         doc = json.loads(path.read_text(encoding="utf-8"))
         html_doc = render_story_html(doc, title=args.get("title"))
 
-        out_arg = args.get("output_html")
-        out_path = Path(out_arg).expanduser() if out_arg else path.with_suffix(".html")
+        root = get_storage_dir(cfg["storage_dir"]).resolve()
+        out_dir = (root / "out").resolve()
+        out_arg = str(args.get("output_html") or "").strip()
+        if out_arg:
+            raw_out = Path(out_arg)
+            candidate = (raw_out if raw_out.is_absolute() else (out_dir / raw_out)).resolve()
+            if not candidate.is_relative_to(out_dir) or candidate == out_dir:
+                return json.dumps({
+                    "ok": False,
+                    "error": f"output_html must resolve inside {out_dir}",
+                })
+            if candidate.suffix.lower() != ".html":
+                candidate = candidate.with_suffix(".html")
+            out_path = candidate
+        else:
+            out_path = (out_dir / f"{doc.get('slug') or path.stem}.html").resolve()
+
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(html_doc, encoding="utf-8")
 

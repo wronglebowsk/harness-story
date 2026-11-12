@@ -40,15 +40,9 @@ def resolve_state_db(db_path: Optional[str] = None) -> Optional[Path]:
     if db_path:
         p = Path(db_path)
         return p if p.is_file() else None
-    try:
-        from hermes_constants import get_hermes_home
-        candidate = get_hermes_home() / "state.db"
-        if candidate.is_file():
-            return candidate
-    except Exception:
-        pass
-    fallback = Path.home() / ".hermes" / "state.db"
-    return fallback if fallback.is_file() else None
+    from hermes_constants import get_hermes_home
+    candidate = get_hermes_home() / "state.db"
+    return candidate if candidate.is_file() else None
 
 
 def _connect_ro(db_path: Path) -> sqlite3.Connection:
@@ -238,12 +232,16 @@ def _inspect_harness_context_load(
     if m_sem:
         semantic_memory = m_sem.group(1).strip()
 
-    # 3. Inspect ~/.hermes/config.yaml + session tool calls for MCP connectors, plugins, and toolsets
+    # 3. Inspect active Hermes profile config.yaml + session tool calls for MCP connectors, plugins, and toolsets
     connectors: List[str] = []
     plugins_enabled: List[str] = []
     toolsets_active: List[str] = []
-    cfg_path = Path.home() / ".hermes" / "config.yaml"
-    if cfg_path.is_file():
+    try:
+        from hermes_constants import get_hermes_home
+        cfg_path: Optional[Path] = get_hermes_home() / "config.yaml"
+    except Exception:
+        cfg_path = None
+    if cfg_path and cfg_path.is_file():
         try:
             cfg_txt = cfg_path.read_text(encoding="utf-8", errors="replace")
             m_mcp = re.search(r"^mcp_servers:\s*\n((?:  [a-zA-Z0-9_-]+:.*\n(?:    .*\n)*)+)", cfg_txt, re.MULTILINE)

@@ -35,8 +35,8 @@ config_schema:
   base_url:
     type: str
     label: Model Base URL
-    default: "http://192.168.1.12:8080"
-    description: "OpenAI-compatible endpoint URL, without /v1."
+    default: ""
+    description: "Optional OpenAI-compatible endpoint URL (without /v1) for hybrid narrative synthesis. Leave empty to use deterministic synthesis."
   context_window:
     type: int
     label: Default Context Window
